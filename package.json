@@ -1,0 +1,33 @@
+{
+  "name": "timeliner",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "nuxt dev",
+    "build": "nuxt build",
+    "generate": "nuxt generate",
+    "preview": "nuxt preview",
+    "postinstall": "nuxt prepare",
+    "typecheck": "nuxt typecheck"
+  },
+  "dependencies": {
+    "@pinia/nuxt": "^0.5.5",
+    "@vueuse/core": "^11.1.0",
+    "@vueuse/nuxt": "^11.1.0",
+    "nuxt": "^3.13.2",
+    "pinia": "^2.2.4",
+    "pinia-plugin-persistedstate": "^3.2.3",
+    "radix-vue": "^1.9.8",
+    "vue": "^3.5.10",
+    "vue-router": "^4.4.5",
+    "vuedraggable": "^4.1.0"
+  },
+  "devDependencies": {
+    "@nuxtjs/tailwindcss": "^6.12.1",
+    "typescript": "^5.6.2",
+    "vue-tsc": "^3.3.6"
+  },
+  "overrides": {
+    "vite": "7.3.3"
+  }
+}
