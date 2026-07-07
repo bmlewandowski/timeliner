@@ -1,7 +1,8 @@
 <template>
   <div
     data-region-header
-    class="sticky top-0 z-10 flex items-center gap-1.5 border-b border-border-hairline bg-surface/95 px-2 py-1.5 backdrop-blur-sm"
+    class="sticky top-0 z-10 flex items-center gap-1.5 border-b border-border-hairline bg-surface px-2 py-1.5"
+    :style="{ height: `${HEADER_ROW_HEIGHT_PX}px` }"
   >
     <span class="region-drag-handle cursor-grab select-none text-ink-muted" title="Drag to reorder">⠿</span>
     <input
@@ -52,6 +53,7 @@
 <script setup lang="ts">
 import { nextTick, ref } from "vue";
 import { useTimelineStore } from "~/stores/timeline";
+import { HEADER_ROW_HEIGHT_PX } from "~/lib/constants";
 import type { Region } from "~/lib/types";
 
 const props = defineProps<{ region: Region }>();

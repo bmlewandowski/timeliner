@@ -2,6 +2,25 @@
   <div class="flex flex-wrap items-center gap-2 bg-[#0b5d52] px-3 py-2">
     <span class="text-sm font-semibold text-white">Timeliner</span>
 
+    <div class="ml-2 flex items-center gap-0.5 rounded-md bg-white/10 p-0.5">
+      <button
+        type="button"
+        class="rounded px-2 py-1 text-xs font-medium"
+        :class="store.viewMode === 'byRegion' ? 'bg-white text-[#0b5d52]' : 'text-white/80 hover:text-white'"
+        @click="store.viewMode = 'byRegion'"
+      >
+        By Region
+      </button>
+      <button
+        type="button"
+        class="rounded px-2 py-1 text-xs font-medium"
+        :class="store.viewMode === 'unified' ? 'bg-white text-[#0b5d52]' : 'text-white/80 hover:text-white'"
+        @click="store.viewMode = 'unified'"
+      >
+        Unified
+      </button>
+    </div>
+
     <div class="ml-4 flex items-center gap-1">
       <button type="button" class="toolbar-btn" title="Zoom out" @click="zoom(-1)">&minus;</button>
       <span class="w-16 text-center text-xs tabular-nums text-white/80">{{ store.config.pixelsPerYear }}px/yr</span>

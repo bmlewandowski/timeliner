@@ -1,3 +1,4 @@
+import { HEADER_ROW_HEIGHT_PX } from "./constants";
 import type { Era, EventEntity, RegionSpan, TimelineConfig, TimelineSegment } from "./types";
 
 /** Any collapsible span — Era or RegionSpan both satisfy this shape. */
@@ -33,11 +34,53 @@ export function expandedConfigBounds(
 }
 
 /**
+ * Greedy interval-graph coloring (same approach as `computeLaneLayout`, §8) over just the COLLAPSED
+ * eras, in ordinal space, sorted chronologically. Eras aren't supposed to overlap, but nothing enforces
+ * that — if two collapsed eras' ranges do overlap or touch, each gets its own stacking layer so their
+ * bands render as separate rows instead of directly on top of one another. Non-overlapping eras reuse
+ * layer 0, so unrelated eras elsewhere on the timeline don't grow taller than they need to.
+ */
+export function computeCollapsedEraLayers(eras: Era[], config: TimelineConfig): Record<string, number> {
+  const sorted = eras
+    .filter((era) => era.isCollapsed)
+    .map((era) => ({
+      id: era.id,
+      start: yearToOrdinal(era.startYear, config),
+      end: yearToOrdinal(era.endYear, config),
+    }))
+    .sort((a, b) => a.start - b.start || a.id.localeCompare(b.id));
+
+  const layerEndOrdinals: number[] = [];
+  const layerByEraId: Record<string, number> = {};
+
+  for (const era of sorted) {
+    let assigned = -1;
+    for (let i = 0; i < layerEndOrdinals.length; i++) {
+      if (layerEndOrdinals[i] <= era.start) {
+        assigned = i;
+        break;
+      }
+    }
+    if (assigned === -1) {
+      assigned = layerEndOrdinals.length;
+      layerEndOrdinals.push(era.end);
+    } else {
+      layerEndOrdinals[assigned] = era.end;
+    }
+    layerByEraId[era.id] = assigned;
+  }
+
+  return layerByEraId;
+}
+
+/**
  * Builds the piecewise segment list purely for coordinate math: implicit gaps plus merged collapsed
  * ranges, in ordinal space, with cumulative pixel offsets. Only COLLAPSED spans warp the axis — an
  * expanded Era or RegionSpan renders fine from its own start/end year via `spanGeometry` and needs no
  * segment of its own. Collapse is a union: any year covered by two overlapping collapsed spans (an Era
- * and another region's dynasty, say) collapses once, merged into a single segment.
+ * and another region's dynasty, say) collapses once, merged into a single segment. When multiple
+ * collapsed eras land in the same merged range (see `computeCollapsedEraLayers`), the segment grows
+ * tall enough to stack one band per layer instead of flattening them into a single band height.
  */
 export function buildSegments(
   eras: Era[],
@@ -46,6 +89,14 @@ export function buildSegments(
 ): TimelineSegment[] {
   const minOrdinal = yearToOrdinal(config.minYear, config);
   const maxOrdinal = yearToOrdinal(config.maxYear, config);
+  const eraLayerByEraId = computeCollapsedEraLayers(eras, config);
+  const collapsedEras = eras
+    .filter((era) => era.isCollapsed)
+    .map((era) => ({
+      start: yearToOrdinal(era.startYear, config),
+      end: yearToOrdinal(era.endYear, config),
+      layer: eraLayerByEraId[era.id],
+    }));
 
   const collapsedRanges = [...eras, ...regionSpans]
     .filter((span) => span.isCollapsed)
@@ -93,12 +144,22 @@ export function buildSegments(
     segments.push({ startOrdinal: minOrdinal, endOrdinal: maxOrdinal, startPx: 0, heightPx: 0, isCollapsed: false });
   }
 
-  let offset = 0;
+  // Leading gap the height of the sticky title row, so minYear's content starts right below it instead
+  // of underneath it — without this, the header (which floats over whatever's scrolled to the very top)
+  // would permanently obscure the first HEADER_ROW_HEIGHT_PX of real content, most visibly a collapsed
+  // era or event sitting right at minYear.
+  let offset = HEADER_ROW_HEIGHT_PX;
   for (const seg of segments) {
     seg.startPx = offset;
-    seg.heightPx = seg.isCollapsed
-      ? config.collapsedEraBandHeight
-      : (seg.endOrdinal - seg.startOrdinal) * config.pixelsPerYear;
+    if (seg.isCollapsed) {
+      const layersInSegment = collapsedEras
+        .filter((era) => era.start < seg.endOrdinal && era.end > seg.startOrdinal)
+        .map((era) => era.layer);
+      const layerCount = layersInSegment.length > 0 ? Math.max(...layersInSegment) + 1 : 1;
+      seg.heightPx = config.collapsedEraBandHeight * layerCount;
+    } else {
+      seg.heightPx = (seg.endOrdinal - seg.startOrdinal) * config.pixelsPerYear;
+    }
     offset += seg.heightPx;
   }
 
@@ -204,19 +265,21 @@ export function eventOverlapsRange(
 /**
  * Pixel geometry for rendering any collapsible span (Era or RegionSpan) as a band.
  * Expanded: top/height come straight from yearToPixel at its own bounds (naturally reflecting any
- * internal compression from an overlapping collapsed span). Collapsed: height must come from the
- * underlying merged segment, not a naive top/bottom subtraction — two years inside the same collapsed
- * segment both resolve to the same pixel, which would otherwise read as zero height.
+ * internal compression from an overlapping collapsed span). Collapsed: height comes from a single band
+ * row (`collapsedEraBandHeight`), offset down by `layerIndex` rows — the underlying merged segment may
+ * be taller than one row when several collapsed eras land in it (see `computeCollapsedEraLayers`), so
+ * each era gets its own stacked row in chronological order instead of every era drawing over the same
+ * spot. `layerIndex` is always 0 for a RegionSpan, which never stacks.
  */
 export function spanGeometry(
   span: CollapsibleSpan,
   segments: TimelineSegment[],
-  config: TimelineConfig
+  config: TimelineConfig,
+  layerIndex = 0
 ): { top: number; height: number } {
   const top = yearToPixel(span.startYear, segments, config);
   if (span.isCollapsed) {
-    const seg = segmentForYear(span.startYear, segments, config);
-    return { top, height: seg?.heightPx ?? config.collapsedEraBandHeight };
+    return { top: top + layerIndex * config.collapsedEraBandHeight, height: config.collapsedEraBandHeight };
   }
   const bottom = yearToPixel(span.endYear, segments, config);
   return { top, height: Math.max(bottom - top, 0) };

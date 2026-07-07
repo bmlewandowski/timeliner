@@ -11,6 +11,7 @@ import type {
 } from "~/lib/types";
 import {
   buildSegments,
+  computeCollapsedEraLayers,
   computeLaneLayout,
   eventOverlapsRange,
   expandedConfigBounds,
@@ -146,6 +147,7 @@ export const useTimelineStore = defineStore(
     // Ephemeral view state — persisted separately from the data above.
     const activeTagFilter = ref<string[]>([]);
     const searchQuery = ref("");
+    const viewMode = ref<"byRegion" | "unified">("byRegion");
 
     // ---- derived, never stored ----
 
@@ -160,6 +162,11 @@ export const useTimelineStore = defineStore(
 
     const segments = computed(() => buildSegments(eraList.value, regionSpanList.value, config));
     const totalPx = computed(() => totalTimelinePx(segments.value));
+    const eraLayerByEraId = computed(() => computeCollapsedEraLayers(eraList.value, config));
+
+    function eraLayerIndex(eraId: string): number {
+      return eraLayerByEraId.value[eraId] ?? 0;
+    }
 
     const visibleEventIds = computed<Set<string>>(() => {
       const query = searchQuery.value.trim().toLowerCase();
@@ -186,6 +193,11 @@ export const useTimelineStore = defineStore(
         .map((id) => events.byId[id]);
     }
 
+    /** Same as `visibleEventsInRegion`, but across every region — the base set for the unified view. */
+    function visibleEventsAll(): EventEntity[] {
+      return events.allIds.filter((id) => visibleEventIds.value.has(id)).map((id) => events.byId[id]);
+    }
+
     function eventsByRegion(regionId: string): EventEntity[] {
       return visibleEventsInRegion(regionId).filter(
         (event) => !isEventFullyCollapsed(event, segments.value, config)
@@ -195,6 +207,14 @@ export const useTimelineStore = defineStore(
     function laneLayoutForRegion(regionId: string) {
       return computeLaneLayout(eventsByRegion(regionId), config.pixelsPerYear, CARD_HEIGHT_PX);
     }
+
+    /** All regions' events combined onto one shared lane layout, for the unified view. */
+    const unifiedEvents = computed<EventEntity[]>(() =>
+      visibleEventsAll().filter((event) => !isEventFullyCollapsed(event, segments.value, config))
+    );
+    const unifiedLaneLayout = computed(() =>
+      computeLaneLayout(unifiedEvents.value, config.pixelsPerYear, CARD_HEIGHT_PX)
+    );
 
     function eraById(eraId: string): Era | undefined {
       return eras.byId[eraId];
@@ -233,14 +253,17 @@ export const useTimelineStore = defineStore(
       return { count: hidden.length, byTag };
     }
 
-    /** For a given collapsed era + region: hidden event count and a per-tag breakdown, filter-aware. */
-    function hiddenEventBreakdown(eraId: string, regionId: string) {
+    /**
+     * For a given collapsed era: hidden event count and a per-tag breakdown, filter-aware. Pass a
+     * `regionId` to scope to one region's column, or omit it for the combined count across every
+     * region (the unified view's single column has no region of its own to scope to).
+     */
+    function hiddenEventBreakdown(eraId: string, regionId?: string) {
       const era = eras.byId[eraId];
       if (!era) return { count: 0, byTag: [] as { label: string; color: string; count: number }[] };
 
-      const hidden = visibleEventsInRegion(regionId).filter((event) =>
-        eventOverlapsRange(event.year, event.endYear, era)
-      );
+      const candidates = regionId ? visibleEventsInRegion(regionId) : visibleEventsAll();
+      const hidden = candidates.filter((event) => eventOverlapsRange(event.year, event.endYear, era));
       return tagBreakdown(hidden);
     }
 
@@ -441,15 +464,19 @@ export const useTimelineStore = defineStore(
       config,
       activeTagFilter,
       searchQuery,
+      viewMode,
       // derived
       regionList,
       eraList,
       regionSpanList,
       segments,
       totalPx,
+      eraLayerIndex,
       visibleEventIds,
       eventsByRegion,
       laneLayoutForRegion,
+      unifiedEvents,
+      unifiedLaneLayout,
       eraById,
       regionSpanById,
       regionSpansForRegion,

@@ -29,6 +29,8 @@ export interface Region {
   name: string;
   order: number;
   color?: string;
+  /** Manual width override in px, set by dragging the column's resize handle. Falls back to the auto lane-based width when unset. */
+  width?: number;
 }
 
 /** A collapsible span scoped to one region (e.g. a dynasty) — same collapse mechanics as Era, but region-owned. */

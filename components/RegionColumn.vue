@@ -6,17 +6,27 @@
     :style="{ width: `${width}px`, height: `${store.totalPx}px` }"
     @dblclick="onBackgroundDblClick"
   >
-    <EraBandOverlay v-for="era in store.eraList" :key="era.id" :era="era" :region-id="region.id" />
+    <!-- Clipping lives on this inner wrapper, not the outer column, so the sticky RegionHeader below
+         keeps sticking to the real scroll container instead of this (non-scrolling) element. -->
+    <div class="absolute inset-0 overflow-hidden">
+      <EraBandOverlay v-for="era in store.eraList" :key="era.id" :era="era" :region-id="region.id" />
 
-    <DynastySpanBand v-for="span in ownSpans" :key="span.id" :span="span" />
+      <DynastySpanBand v-for="span in ownSpans" :key="span.id" :span="span" />
+
+      <EventCard
+        v-for="event in visibleEvents"
+        :key="event.id"
+        :event="event"
+        :lane-index="laneLayout.laneByEventId[event.id] ?? 0"
+      />
+    </div>
 
     <RegionHeader :region="region" />
 
-    <EventCard
-      v-for="event in visibleEvents"
-      :key="event.id"
-      :event="event"
-      :lane-index="laneLayout.laneByEventId[event.id] ?? 0"
+    <div
+      class="absolute right-0 top-0 z-20 h-full w-1.5 cursor-col-resize hover:bg-series-1/40"
+      title="Drag to resize column"
+      @pointerdown="onResizeStart"
     />
   </div>
 </template>
@@ -25,7 +35,7 @@
 import { computed, inject } from "vue";
 import { useTimelineStore } from "~/stores/timeline";
 import { pixelToYear } from "~/lib/coordinates";
-import { BASE_REGION_WIDTH_PX, LANE_WIDTH_PX } from "~/lib/constants";
+import { BASE_REGION_WIDTH_PX, LANE_WIDTH_PX, MIN_REGION_WIDTH_PX } from "~/lib/constants";
 import type { EventDrag } from "~/composables/useEventDrag";
 import type { Region } from "~/lib/types";
 
@@ -37,10 +47,30 @@ const openEventDetail = inject<(id: string) => void>("openEventDetail");
 const ownSpans = computed(() => store.regionSpansForRegion(props.region.id));
 const visibleEvents = computed(() => store.eventsByRegion(props.region.id));
 const laneLayout = computed(() => store.laneLayoutForRegion(props.region.id));
-const width = computed(() => Math.max(BASE_REGION_WIDTH_PX, laneLayout.value.laneCount * LANE_WIDTH_PX));
+const autoWidth = computed(() => Math.max(BASE_REGION_WIDTH_PX, laneLayout.value.laneCount * LANE_WIDTH_PX));
+const width = computed(() => Math.max(MIN_REGION_WIDTH_PX, props.region.width ?? autoWidth.value));
 const isDropTarget = computed(
   () => drag.state.value !== null && drag.state.value.hoveredRegionId === props.region.id
 );
+
+function onResizeStart(e: PointerEvent) {
+  e.preventDefault();
+  const startX = e.clientX;
+  const startWidth = width.value;
+  document.body.style.cursor = "col-resize";
+
+  function onMove(moveEvent: PointerEvent) {
+    const nextWidth = Math.max(MIN_REGION_WIDTH_PX, startWidth + (moveEvent.clientX - startX));
+    store.updateRegion(props.region.id, { width: nextWidth });
+  }
+  function onUp() {
+    document.body.style.cursor = "";
+    window.removeEventListener("pointermove", onMove);
+    window.removeEventListener("pointerup", onUp);
+  }
+  window.addEventListener("pointermove", onMove);
+  window.addEventListener("pointerup", onUp);
+}
 
 function onBackgroundDblClick(e: MouseEvent) {
   if ((e.target as HTMLElement).closest("[data-event-card], [data-region-header]")) return;

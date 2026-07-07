@@ -4,12 +4,12 @@
     :style="style"
     @click="showLabel ? store.toggleEraCollapsed(era.id) : undefined"
   >
-    <div v-if="showLabel" class="flex h-full items-center gap-1 overflow-hidden px-2">
-      <span class="truncate text-[11px] font-medium" :style="{ color: ink }">
+    <div v-if="showLabel" class="flex h-full items-start gap-1 overflow-hidden px-2 pt-4">
+      <span class="truncate text-[11px] font-medium text-ink-primary">
         {{ era.name }}<span v-if="era.isCollapsed" class="opacity-80"> — collapsed</span>
       </span>
     </div>
-    <div v-else-if="regionId && era.isCollapsed && breakdown.count > 0" class="flex h-full items-center justify-center">
+    <div v-else-if="era.isCollapsed && breakdown.count > 0" class="flex h-full items-center justify-center">
       <HiddenCountBadge :breakdown="breakdown" />
     </div>
   </div>
@@ -18,24 +18,22 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { useTimelineStore } from "~/stores/timeline";
-import { hexToRgba, inkForBackground } from "~/lib/color";
+import { hexToRgba } from "~/lib/color";
 import { spanGeometry } from "~/lib/coordinates";
 import type { Era } from "~/lib/types";
 
 const props = defineProps<{
   era: Era;
   showLabel?: boolean;
+  /** Scopes the hidden-count badge to one region's column; omit for the unified view's combined count. */
   regionId?: string;
 }>();
 
 const store = useTimelineStore();
-const ink = computed(() => inkForBackground(props.era.color));
-const breakdown = computed(() =>
-  props.regionId
-    ? store.hiddenEventBreakdown(props.era.id, props.regionId)
-    : { count: 0, byTag: [] as { label: string; color: string; count: number }[] }
+const breakdown = computed(() => store.hiddenEventBreakdown(props.era.id, props.regionId));
+const geometry = computed(() =>
+  spanGeometry(props.era, store.segments, store.config, store.eraLayerIndex(props.era.id))
 );
-const geometry = computed(() => spanGeometry(props.era, store.segments, store.config));
 const style = computed(() => ({
   top: `${geometry.value.top}px`,
   height: `${geometry.value.height}px`,
